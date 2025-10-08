@@ -250,7 +250,7 @@ class ScrimHighlightHandler:
             max_maps = (format_num + 1) // 2  # BO3=2, BO5=3, etc.
             
             upload_embed = discord.Embed(
-                title="Scrim Highlight Upload",
+                title="Upload Screenshots",
                 description=f"**Step 3: Upload Your Screenshots**\n\n"
                            f"Match Format: **{selected_format}** (Best of {format_num})\n"
                            f"Clan: **{clan_name}**\n\n"
@@ -266,7 +266,7 @@ class ScrimHighlightHandler:
             )
         else:
             upload_embed = discord.Embed(
-                title="Scrim Highlight Upload",
+                title="Upload Highlight",
                 description=f"**Step 3: Upload Your Highlight**\n\n"
                            f"Match Format: **{selected_format}** (Best of {selected_format[2]})\n"
                            f"Clan: **{clan_name}**\n\n"

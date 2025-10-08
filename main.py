@@ -64,7 +64,7 @@ class MatchFormatView(discord.ui.View):
         
         # Ask for clan name
         clan_embed = discord.Embed(
-            title="Scrim Highlight Upload",
+            title="Enter Clan Name",
             description=f"**Step 2: Enter Clan Name**\n\n"
                        f"Match Format: **{selected_format}** (Best of {selected_format[2]})\n\n"
                        f"**Please type the name of the clan you played against:**\n"
@@ -174,13 +174,24 @@ class ZeroRemorseBot(commands.Bot):
         # Send the UI to the designated channel
         await self.send_ui_to_channel()
     
-    async def send_ui_to_channel(self):
+    async def send_ui_to_channel(self, force_recreate=False):
         """Send the minimalistic UI to the designated channel"""
         try:
             channel = self.get_channel(self.channel_id)
             if not channel:
                 print(f"Channel with ID {self.channel_id} not found!")
                 return
+            
+            # Check if UI already exists (unless force recreate is requested)
+            if not force_recreate:
+                print("Checking for existing UI...")
+                async for message in channel.history(limit=50):
+                    if (message.author == self.user and 
+                        message.embeds and 
+                        "Zero Remorse Scrim Highlights" in message.embeds[0].title and
+                        message.components):  # Has buttons/view components
+                        print("Existing UI found, skipping creation")
+                        return
             
             # Purge all bot messages in the channel
             print("Purging old bot messages...")
@@ -233,8 +244,8 @@ async def setup_ui(interaction: discord.Interaction):
         await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
         return
     
-    await bot.send_ui_to_channel()
-    await interaction.response.send_message("UI has been set up in the designated channel!", ephemeral=True)
+    await bot.send_ui_to_channel(force_recreate=True)
+    await interaction.response.send_message("UI has been recreated in the designated channel!", ephemeral=True)
 
 if __name__ == "__main__":
     # Get port for web services (required by some hosting platforms)
