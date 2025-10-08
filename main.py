@@ -159,11 +159,14 @@ class ZeroRemorseBot(commands.Bot):
         
         self.guild_id = int(os.getenv('GUILD_ID'))
         self.channel_id = int(os.getenv('CHANNEL_ID'))
+        
+        # Create a single persistent view instance
+        self.upload_view = UploadHighlightView()
     
     async def setup_hook(self):
         """This is called when the bot starts up"""
-        # Add the persistent view
-        self.add_view(UploadHighlightView())
+        # Add the single persistent view instance
+        self.add_view(self.upload_view)
         
         # Setup scrim highlights functionality
         setup_scrim_highlights(self)
@@ -229,14 +232,14 @@ class ZeroRemorseBot(commands.Bot):
                 
                 await channel.send(
                     embed=embed,
-                    view=UploadHighlightView(),
+                    view=self.upload_view,
                     file=file
                 )
             except FileNotFoundError:
                 # Send without image if file doesn't exist
                 await channel.send(
                     embed=embed,
-                    view=UploadHighlightView()
+                    view=self.upload_view
                 )
             
             print(f"UI sent to channel: #{channel.name}")
