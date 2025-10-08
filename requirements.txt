@@ -1,4 +1,18 @@
-discord.py==2.4.0
+# Core bot dependencies
+discord.py>=2.3.2,<3.0.0
+python-dotenv>=1.0.0
+google-generativeai>=0.3.2
+
+# Image processing - use version range for better wheel compatibility  
+Pillow>=10.0.0,<11.0.0
+
+# HTTP and web server
+aiohttp>=3.8.0,<4.0.0
+flask>=3.0.0,<4.0.0
+
+# Additional stability packages
+setuptools>=65.0.0
+wheel>=0.38.0d.py==2.4.0
 python-dotenv==1.0.0
 google-generativeai==0.3.2
 Pillow==10.2.0
