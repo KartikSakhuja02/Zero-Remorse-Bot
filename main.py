@@ -6,11 +6,38 @@ from dotenv import load_dotenv
 import logging
 from scrim_highlights import ScrimHighlightModal, setup_scrim_highlights
 
+# Try to import keep_alive for hosting platforms that need it
+try:
+    from keep_alive import keep_alive
+    KEEP_ALIVE_AVAILABLE = True
+except ImportError:
+    KEEP_ALIVE_AVAILABLE = False
+    print("ℹ️  Keep-alive not available (Flask not installed)")
+
 # Load environment variables
 load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
+
+# Verify required environment variables
+required_vars = [
+    'DISCORD_TOKEN', 
+    'GUILD_ID', 
+    'CHANNEL_ID', 
+    'VALOM_ROLE_ID', 
+    'SCRIM_HIGHLIGHTS_CHANNEL_ID', 
+    'GEMINI_API_KEY'
+]
+
+missing_vars = [var for var in required_vars if not os.getenv(var)]
+
+if missing_vars:
+    print(f"ERROR: Missing required environment variables: {', '.join(missing_vars)}")
+    print("Please set these variables in your hosting platform's environment settings.")
+    exit(1)
+
+print("✅ All required environment variables found!")
 
 class MatchFormatView(discord.ui.View):
     def __init__(self, user_id):
@@ -209,18 +236,26 @@ async def setup_ui(interaction: discord.Interaction):
     await interaction.response.send_message("UI has been set up in the designated channel!", ephemeral=True)
 
 if __name__ == "__main__":
-    # Check if required environment variables are set
-    required_vars = ['DISCORD_TOKEN', 'GUILD_ID', 'CHANNEL_ID', 'VALOM_ROLE_ID', 'GEMINI_API_KEY']
-    missing_vars = [var for var in required_vars if not os.getenv(var) or os.getenv(var).startswith('your_')]
+    # Get port for web services (required by some hosting platforms)
+    port = int(os.environ.get('PORT', 8080))
     
-    if missing_vars:
-        print(f"Missing required environment variables: {', '.join(missing_vars)}")
-        print("Please check your .env file and make sure all required variables are set.")
-        exit(1)
+    print(f"🚀 Starting Zero Remorse Discord Bot...")
+    print(f"📋 Required environment variables verified")
+    print(f"🌐 Port configured: {port}")
+    
+    # Start keep-alive web server if available (for hosting platforms)
+    if KEEP_ALIVE_AVAILABLE:
+        keep_alive()
+        print("🔄 Keep-alive server started")
     
     try:
+        # Run the bot
         bot.run(os.getenv('DISCORD_TOKEN'))
     except discord.LoginFailure:
-        print("Invalid Discord token! Please check your DISCORD_TOKEN in the .env file.")
+        print("❌ Invalid Discord token! Please check your DISCORD_TOKEN environment variable.")
+    except discord.HTTPException as e:
+        print(f"❌ Discord HTTP error: {e}")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"❌ An unexpected error occurred: {e}")
+        import traceback
+        traceback.print_exc()

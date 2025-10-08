@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.local
+.env.production
 
 # Python
 __pycache__/
@@ -19,9 +21,17 @@ venv.bak/
 *.swp
 *.swo
 
-# Logs
-*.log
-
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local data files (keep structure but not content)
+scrim_highlight.json
+
+# Discord bot specifics
+*.db
+*.sqlite
