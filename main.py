@@ -160,12 +160,13 @@ class ZeroRemorseBot(commands.Bot):
         self.guild_id = int(os.getenv('GUILD_ID'))
         self.channel_id = int(os.getenv('CHANNEL_ID'))
         
-        # Create a single persistent view instance
-        self.upload_view = UploadHighlightView()
+        # Will be created in setup_hook when event loop is available
+        self.upload_view = None
     
     async def setup_hook(self):
         """This is called when the bot starts up"""
-        # Add the single persistent view instance
+        # Create the single persistent view instance (now that event loop is running)
+        self.upload_view = UploadHighlightView()
         self.add_view(self.upload_view)
         
         # Setup scrim highlights functionality
