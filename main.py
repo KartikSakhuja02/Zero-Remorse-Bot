@@ -89,13 +89,16 @@ class UploadHighlightView(discord.ui.View):
     )
     async def upload_highlight(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle the upload scrim highlight button click"""
+        # Defer the response immediately to prevent timeout issues
+        await interaction.response.defer(ephemeral=True)
+        
         # Check if user has the Valom role using role ID
         valom_role_id = int(os.getenv('VALOM_ROLE_ID'))
         has_valom_role = any(role.id == valom_role_id for role in interaction.user.roles)
         
         if not has_valom_role:
             # User doesn't have Valom role
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "**Access Denied**\n\nYou don't have the required **Valom** role to upload scrim highlights.",
                 ephemeral=True
             )
@@ -115,8 +118,8 @@ class UploadHighlightView(discord.ui.View):
             view = MatchFormatView(interaction.user.id)
             await interaction.user.send(embed=dm_embed, view=view)
             
-            # Confirm in the channel (ephemeral)
-            await interaction.response.send_message(
+            # Confirm in the channel (ephemeral) using followup
+            await interaction.followup.send(
                 "**Check your DMs!**\n\n"
                 "I've sent you instructions for uploading your scrim highlight. "
                 "Please send your screenshot/video in our DM conversation.",
@@ -125,10 +128,17 @@ class UploadHighlightView(discord.ui.View):
             
         except discord.Forbidden:
             # User has DMs disabled
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "**Cannot send DM**\n\n"
                 "Please enable DMs from server members so I can send you upload instructions.\n"
                 "Go to: **Server Settings → Privacy Settings → Allow direct messages from server members**",
+                ephemeral=True
+            )
+        except Exception as e:
+            # Handle any other errors
+            print(f"Error in upload_highlight: {e}")
+            await interaction.followup.send(
+                "**Error**\n\nSomething went wrong while setting up your highlight upload. Please try again.",
                 ephemeral=True
             )
 
