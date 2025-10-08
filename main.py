@@ -68,7 +68,8 @@ class MatchFormatView(discord.ui.View):
             description=f"**Step 2: Enter Clan Name**\n\n"
                        f"Match Format: **{selected_format}** (Best of {selected_format[2]})\n\n"
                        f"**Please type the name of the clan you played against:**\n"
-                       f"Just send a message with the clan name.\n\n"
+                       f"Just send a message with the clan name.\n"
+                       f"Type **'cancel'** to abort this process.\n\n"
                        f"**Example:**\n"
                        f"*Team Liquid*",
             color=0xffa500

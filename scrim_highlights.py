@@ -136,6 +136,11 @@ class ScrimHighlightHandler:
         
         print("User passed all validation checks")
         
+        # Check if user wants to cancel any ongoing process
+        if message.content.strip().lower() == "cancel":
+            await self.handle_cancel_request(message, bot)
+            return
+        
         # Check if user is sending a file (has attachments)
         if message.attachments:
             print("User sent file attachment")
@@ -178,12 +183,56 @@ class ScrimHighlightHandler:
         print("No valid state found, sending instructions")
         await message.reply("Please use the button in the server channel to start uploading a highlight!")
     
+    async def handle_cancel_request(self, message, bot):
+        """Handle user cancel request - clear all stored data for this user"""
+        user_id = message.author.id
+        cancelled_processes = []
+        
+        # Clear match format selection
+        if hasattr(bot, 'user_match_formats') and user_id in bot.user_match_formats:
+            del bot.user_match_formats[user_id]
+            cancelled_processes.append("Match format selection")
+        
+        # Clear clan name input
+        if hasattr(bot, 'user_clan_names') and user_id in bot.user_clan_names:
+            del bot.user_clan_names[user_id]
+            cancelled_processes.append("Clan name input")
+        
+        # Clear multi-map screenshot collection
+        if hasattr(bot, 'user_multi_map_data') and user_id in bot.user_multi_map_data:
+            format_type = bot.user_multi_map_data[user_id].get('match_format', 'Multi-map')
+            screenshot_count = len(bot.user_multi_map_data[user_id].get('screenshots', []))
+            del bot.user_multi_map_data[user_id]
+            cancelled_processes.append(f"{format_type} screenshot collection ({screenshot_count} screenshots)")
+        
+        if cancelled_processes:
+            process_list = ", ".join(cancelled_processes)
+            embed = discord.Embed(
+                title="❌ Process Cancelled",
+                description=f"Successfully cancelled: {process_list}\n\nYou can start over by using the button in the server channel.",
+                color=0xff4444
+            )
+            embed.set_footer(text="Zero Remorse • Process cancelled")
+            await message.reply(embed=embed)
+            print(f"Cancelled processes for {message.author.display_name}: {process_list}")
+        else:
+            embed = discord.Embed(
+                title="ℹ️ No Active Process",
+                description="You don't have any active highlight upload process to cancel.\n\nUse the button in the server channel to start uploading a highlight.",
+                color=0x3498db
+            )
+            embed.set_footer(text="Zero Remorse • Nothing to cancel")
+            await message.reply(embed=embed)
+    
     async def process_clan_name_input(self, message, bot):
         """Process clan name input from user"""
         clan_name = message.content.strip()
         
+        # Cancel is already handled in the main process_dm_highlight function
+        # so this function will only receive non-cancel messages
+        
         if not clan_name:
-            await message.reply("Please provide a valid clan name!")
+            await message.reply("Please provide a valid clan name or type **'cancel'** to abort!")
             return
         
         # Store clan name for this user
@@ -210,6 +259,7 @@ class ScrimHighlightHandler:
                            f"• Example: If you won 2-1, send 2 screenshots\n"
                            f"• Example: If you won 3-0, send 1 screenshot\n\n"
                            f"**Send your screenshots now, then type 'done' when finished**\n"
+                           f"**Type 'cancel' to abort this process**\n\n"
                            f"**Supported formats:** .png, .jpg, .jpeg\n"
                            f"**Max file size:** 50MB per image",
                 color=0xffa500
@@ -221,7 +271,8 @@ class ScrimHighlightHandler:
                            f"Match Format: **{selected_format}** (Best of {selected_format[2]})\n"
                            f"Clan: **{clan_name}**\n\n"
                            f"**Now send your highlight file:**\n"
-                           f"• Attach your video/screenshot\n\n"
+                           f"• Attach your video/screenshot\n"
+                           f"• Type 'cancel' to abort this process\n\n"
                            f"**Supported formats:** .mp4, .mov, .avi, .gif, .png, .jpg\n"
                            f"**Max file size:** 50MB",
             color=0x00ff00
@@ -474,10 +525,10 @@ class ScrimHighlightHandler:
             max_maps = (format_num + 1) // 2  # BO3=2, BO5=3, etc.
             
             if screenshot_count < max_maps:
-                await message.reply(f"**Screenshot {screenshot_count} received!**\n\nSend another screenshot if you have it, or type **'done'** to process the {selected_format} match.")
+                await message.reply(f"**Screenshot {screenshot_count} received!**\n\nSend another screenshot if you have it, or type **'done'** to process the {selected_format} match.\nType **'cancel'** to abort this process.")
             else:
                 # Max screenshots reached
-                await message.reply(f"**Screenshot {screenshot_count} received!**\n\nType **'done'** to process the {selected_format} match.")
+                await message.reply(f"**Screenshot {screenshot_count} received!**\n\nType **'done'** to process the {selected_format} match.\nType **'cancel'** to abort this process.")
             
         except Exception as e:
             print(f"Error handling {selected_format} upload: {e}")
