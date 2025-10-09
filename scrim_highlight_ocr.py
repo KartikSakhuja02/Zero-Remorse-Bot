@@ -362,7 +362,7 @@ class ValOCRHandler:
             
             # Set a timeout for the request
             try:
-                response = await asyncio.wait_for(run_gemini_request(), timeout=30.0)
+                response = await asyncio.wait_for(run_gemini_request(), timeout=15.0)
                 
                 # Parse the response
                 response_text = response.text.strip()
@@ -713,8 +713,18 @@ class BO3OCRHandler:
             # Process each screenshot to get individual map results
             map_results = []
             
+            # Send progress message
+            progress_msg = await message.reply(f"🔄 Processing {len(screenshots)} screenshots for BO3 match...")
+            
             for i, screenshot in enumerate(screenshots):
                 print(f"Processing screenshot {i+1}/{len(screenshots)}")
+                
+                # Update progress
+                if progress_msg:
+                    try:
+                        await progress_msg.edit(content=f"🔄 Processing screenshot {i+1}/{len(screenshots)}...")
+                    except:
+                        pass  # Ignore edit failures
                 
                 # Create image from screenshot data
                 image = Image.open(io.BytesIO(screenshot["data"]))
@@ -728,6 +738,13 @@ class BO3OCRHandler:
                 if i < len(screenshots) - 1:
                     import asyncio
                     await asyncio.sleep(2)
+            
+            # Clean up progress message
+            if progress_msg:
+                try:
+                    await progress_msg.delete()
+                except:
+                    pass
             
             if not map_results:
                 await message.reply("Could not process any screenshots. Please try again.")
@@ -791,7 +808,7 @@ class BO3OCRHandler:
             await message.reply("Error processing BO3 match. Please try again.")
     
     async def extract_map_result(self, image, map_number):
-        """Extract result from a single map screenshot"""
+        """Extract result from a single map screenshot - BO3 handler"""
         try:
             # Convert PIL image to bytes
             img_byte_arr = io.BytesIO()
@@ -829,7 +846,7 @@ class BO3OCRHandler:
                 )
             
             try:
-                response = await asyncio.wait_for(run_gemini_request(), timeout=30.0)
+                response = await asyncio.wait_for(run_gemini_request(), timeout=15.0)
                 response_text = response.text.strip()
                 print(f"Map {map_number} Gemini response: {response_text}")
                 
