@@ -327,26 +327,31 @@ class ValOCRHandler:
             image.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
             
-            # Create simplified prompt for BO1 (score only)
+            # Create enhanced prompt for BO1 score extraction
             prompt = f"""
-            Analyze this Valorant end-game screenshot and extract ONLY the match score and result.
+            Analyze this Valorant end-game screenshot and extract the match score and result.
             
-            INSTRUCTIONS:
-            1. Look at the score display in the upper center (format: number win/defeat number)
-            2. The win/defeat text might be in English (WIN/DEFEAT) or Chinese (胜利/失败)
-            3. Extract the round scores (like 13-10, 13-7, etc.)
-            4. Determine if we won or lost based on the win/defeat text
+            CRITICAL INSTRUCTIONS:
+            1. Look for the large score display in the center/upper area of the screen
+            2. The format is usually: [NUMBER] [WIN/DEFEAT/VICTORY/胜利/失败] [NUMBER]
+            3. Common score patterns: "13 VICTORY 11", "12 DEFEAT 14", "13-11 WIN", etc.
+            4. Look for these keywords: WIN, VICTORY, DEFEAT, LOSS, 胜利, 失败
+            5. If you see VICTORY/WIN/胜利 = we won, if you see DEFEAT/LOSS/失败 = we lost
+            6. The score format can be "13 WIN 11" or "13-11" with separate win/loss indicator
+            7. Focus on the main scoreboard, ignore smaller UI elements
             
-            Return ONLY the JSON with this exact format:
+            RETURN FORMAT - MUST be valid JSON:
             {{
-                "our_score": number,
-                "enemy_score": number,
+                "our_score": [number - our team's rounds won],
+                "enemy_score": [number - enemy team's rounds won],
                 "result": "win" or "defeat",
                 "match_format": "{match_format}"
             }}
             
-            Example: If the score shows "13 VICTORY 10", return:
-            {{"our_score": 13, "enemy_score": 10, "result": "win", "match_format": "{match_format}"}}
+            EXAMPLES:
+            - "13 VICTORY 11" → {{"our_score": 13, "enemy_score": 11, "result": "win", "match_format": "{match_format}"}}
+            - "10 DEFEAT 13" → {{"our_score": 10, "enemy_score": 13, "result": "defeat", "match_format": "{match_format}"}}
+            - Score "15-13" with WIN → {{"our_score": 15, "enemy_score": 13, "result": "win", "match_format": "{match_format}"}}
             """
             
             # Send to Gemini with async/await and timeout handling
