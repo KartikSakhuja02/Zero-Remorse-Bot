@@ -602,6 +602,230 @@ async def set_stats(interaction: discord.Interaction, wins: int = 0, losses: int
         except:
             pass
 
+@bot.tree.command(name="edit_stats", description="Edit current win/loss/draw counts (Admin only)", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
+async def edit_stats(interaction: discord.Interaction, wins_change: int = 0, losses_change: int = 0, draws_change: int = 0):
+    """Slash command to modify current match statistics by adding/subtracting"""
+    if not interaction.user.guild_permissions.administrator:
+        try:
+            await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
+        except discord.NotFound:
+            print("Admin check interaction expired")
+        return
+    
+    try:
+        # Defer the response to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+        
+        # Import required modules
+        import json
+        import os
+        from datetime import datetime
+        
+        json_file = "scrim_highlight.json"
+        
+        # Get current stats
+        current_stats = {"wins": 0, "losses": 0, "draws": 0, "total_matches": 0}
+        existing_data = {}
+        
+        if os.path.exists(json_file):
+            try:
+                with open(json_file, 'r') as f:
+                    content = f.read().strip()
+                    if content:
+                        existing_data = json.loads(content)
+                        # Count current stats
+                        for entry in existing_data.values():
+                            if isinstance(entry, dict):
+                                result = entry.get("result", "").lower()
+                                if result == "win":
+                                    current_stats["wins"] += 1
+                                elif result == "defeat":
+                                    current_stats["losses"] += 1
+                                elif result == "draw":
+                                    current_stats["draws"] += 1
+                                current_stats["total_matches"] += 1
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+        
+        # Calculate new stats
+        new_wins = max(0, current_stats["wins"] + wins_change)
+        new_losses = max(0, current_stats["losses"] + losses_change)
+        new_draws = max(0, current_stats["draws"] + draws_change)
+        
+        # Check if no changes needed
+        if wins_change == 0 and losses_change == 0 and draws_change == 0:
+            embed = discord.Embed(
+                title="📊 Current Statistics",
+                description="No changes were made. Here are your current stats:",
+                color=0x3498db
+            )
+            embed.add_field(
+                name="Current Stats",
+                value=f"**Wins:** {current_stats['wins']}\n**Losses:** {current_stats['losses']}\n**Draws:** {current_stats['draws']}\n**Total:** {current_stats['total_matches']}",
+                inline=False
+            )
+            embed.set_footer(text=f"Use /edit_stats wins_change:5 to add 5 wins, or wins_change:-2 to subtract 2 wins")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Create backup if there's existing data
+        if current_stats["total_matches"] > 0:
+            backup_file = f"scrim_highlight_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            import shutil
+            shutil.copy2(json_file, backup_file)
+            print(f"Created backup before stat edit: {backup_file}")
+        
+        # Get the highest existing ID
+        max_id = 0
+        for existing_id in existing_data.keys():
+            try:
+                id_num = int(existing_id)
+                max_id = max(max_id, id_num)
+            except ValueError:
+                continue
+        
+        # Keep existing data and add/remove synthetic entries as needed
+        new_data = existing_data.copy()
+        entry_id = max_id + 1
+        
+        # Calculate how many entries to add/remove for each type
+        wins_to_add = new_wins - current_stats["wins"]
+        losses_to_add = new_losses - current_stats["losses"] 
+        draws_to_add = new_draws - current_stats["draws"]
+        
+        # Add wins if needed
+        for i in range(wins_to_add):
+            entry = {
+                "id": str(entry_id),
+                "user_id": "admin_edited",
+                "username": "Stats Edit",
+                "match_format": "BO1",
+                "upload_type": "scrim",
+                "clan_name": f"Added Win {i+1}",
+                "our_score": 13,
+                "enemy_score": 10,
+                "result": "win",
+                "timestamp": datetime.now().isoformat(),
+                "extraction_method": "Admin Edit"
+            }
+            new_data[str(entry_id)] = entry
+            entry_id += 1
+        
+        # Add losses if needed
+        for i in range(losses_to_add):
+            entry = {
+                "id": str(entry_id),
+                "user_id": "admin_edited",
+                "username": "Stats Edit",
+                "match_format": "BO1", 
+                "upload_type": "scrim",
+                "clan_name": f"Added Loss {i+1}",
+                "our_score": 10,
+                "enemy_score": 13,
+                "result": "defeat",
+                "timestamp": datetime.now().isoformat(),
+                "extraction_method": "Admin Edit"
+            }
+            new_data[str(entry_id)] = entry
+            entry_id += 1
+        
+        # Add draws if needed
+        for i in range(draws_to_add):
+            entry = {
+                "id": str(entry_id),
+                "user_id": "admin_edited",
+                "username": "Stats Edit",
+                "match_format": "BO1",
+                "upload_type": "scrim", 
+                "clan_name": f"Added Draw {i+1}",
+                "our_score": 12,
+                "enemy_score": 12,
+                "result": "draw",
+                "timestamp": datetime.now().isoformat(),
+                "extraction_method": "Admin Edit"
+            }
+            new_data[str(entry_id)] = entry
+            entry_id += 1
+        
+        # Remove entries if needed (remove synthetic entries first, then oldest)
+        if wins_to_add < 0:  # Need to remove wins
+            wins_to_remove = abs(wins_to_add)
+            removed = 0
+            for entry_id in list(new_data.keys()):
+                if removed >= wins_to_remove:
+                    break
+                entry = new_data[entry_id]
+                if isinstance(entry, dict) and entry.get("result") == "win":
+                    del new_data[entry_id]
+                    removed += 1
+        
+        if losses_to_add < 0:  # Need to remove losses
+            losses_to_remove = abs(losses_to_add)
+            removed = 0
+            for entry_id in list(new_data.keys()):
+                if removed >= losses_to_remove:
+                    break
+                entry = new_data[entry_id]
+                if isinstance(entry, dict) and entry.get("result") == "defeat":
+                    del new_data[entry_id]
+                    removed += 1
+        
+        if draws_to_add < 0:  # Need to remove draws
+            draws_to_remove = abs(draws_to_add)
+            removed = 0
+            for entry_id in list(new_data.keys()):
+                if removed >= draws_to_remove:
+                    break
+                entry = new_data[entry_id]
+                if isinstance(entry, dict) and entry.get("result") == "draw":
+                    del new_data[entry_id]
+                    removed += 1
+        
+        # Save the updated data
+        with open(json_file, 'w') as f:
+            json.dump(new_data, f, indent=2)
+        
+        # Send confirmation message
+        total_new = new_wins + new_losses + new_draws
+        embed = discord.Embed(
+            title="📊 Statistics Edited",
+            description=f"Match statistics have been updated with your changes.",
+            color=0x00ff88
+        )
+        
+        embed.add_field(
+            name="Previous Stats",
+            value=f"**Wins:** {current_stats['wins']}\n**Losses:** {current_stats['losses']}\n**Draws:** {current_stats['draws']}\n**Total:** {current_stats['total_matches']}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="Changes Applied",
+            value=f"**Wins:** {wins_change:+}\n**Losses:** {losses_change:+}\n**Draws:** {draws_change:+}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="New Stats",
+            value=f"**Wins:** {new_wins}\n**Losses:** {new_losses}\n**Draws:** {new_draws}\n**Total:** {total_new}",
+            inline=True
+        )
+        
+        embed.set_footer(text=f"Edited by {interaction.user.display_name} • Zero Remorse Stats")
+        embed.timestamp = datetime.now()
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        print(f"Stats edited by {interaction.user.display_name}: W{wins_change:+} L{losses_change:+} D{draws_change:+}")
+        
+    except discord.NotFound:
+        print("Edit stats interaction expired")
+    except Exception as e:
+        print(f"Error editing stats: {e}")
+        try:
+            await interaction.followup.send("❌ **Error**\n\nFailed to edit statistics. Please try again or contact support.", ephemeral=True)
+        except:
+            pass
+
 if __name__ == "__main__":
     # Get port for web services (required by some hosting platforms)
     port = int(os.environ.get('PORT', 8080))
