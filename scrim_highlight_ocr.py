@@ -707,7 +707,7 @@ class BO3OCRHandler:
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model = genai.GenerativeModel('gemini-2.5-flash')
     
-    async def process_bo3_match(self, message, bot, screenshots, clan_name, user_id):
+    async def process_bo3_match(self, message, bot, screenshots, clan_name, user_id, upload_type):
         """Process multiple screenshots for BO3 match"""
         try:
             # Process each screenshot to get individual map results
@@ -758,7 +758,7 @@ class BO3OCRHandler:
             }
             
             # Create confirmation view
-            view = MultiMapConfirmationView(combined_data, user_id, message, bot, screenshots, clan_name)
+            view = MultiMapConfirmationView(combined_data, user_id, message, bot, screenshots, clan_name, upload_type)
             
             # Create confirmation embed
             embed = discord.Embed(
@@ -858,7 +858,7 @@ class BO4OCRHandler:
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model = genai.GenerativeModel('gemini-2.5-flash')
     
-    async def process_bo4_match(self, message, bot, screenshots, clan_name, user_id):
+    async def process_bo4_match(self, message, bot, screenshots, clan_name, user_id, upload_type):
         """Process multiple screenshots for BO4 match"""
         try:
             # Process each screenshot to get individual map results
@@ -909,7 +909,7 @@ class BO4OCRHandler:
             }
             
             # Create confirmation view
-            view = MultiMapConfirmationView(combined_data, user_id, message, bot, screenshots, clan_name)
+            view = MultiMapConfirmationView(combined_data, user_id, message, bot, screenshots, clan_name, upload_type)
             
             # Create confirmation embed
             embed = discord.Embed(
@@ -1009,7 +1009,7 @@ class BO5OCRHandler:
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model = genai.GenerativeModel('gemini-2.5-flash')
     
-    async def process_bo5_match(self, message, bot, screenshots, clan_name, user_id):
+    async def process_bo5_match(self, message, bot, screenshots, clan_name, user_id, upload_type):
         """Process multiple screenshots for BO5 match"""
         try:
             # Process each screenshot to get individual map results
@@ -1060,7 +1060,7 @@ class BO5OCRHandler:
             }
             
             # Create confirmation view
-            view = MultiMapConfirmationView(combined_data, user_id, message, bot, screenshots, clan_name)
+            view = MultiMapConfirmationView(combined_data, user_id, message, bot, screenshots, clan_name, upload_type)
             
             # Create confirmation embed
             embed = discord.Embed(
@@ -1155,7 +1155,7 @@ class BO5OCRHandler:
 
 
 class MultiMapConfirmationView(discord.ui.View):
-    def __init__(self, combined_data, user_id, original_message, bot, screenshots, clan_name):
+    def __init__(self, combined_data, user_id, original_message, bot, screenshots, clan_name, upload_type):
         super().__init__(timeout=300)
         self.combined_data = combined_data
         self.user_id = user_id
@@ -1163,6 +1163,7 @@ class MultiMapConfirmationView(discord.ui.View):
         self.bot = bot
         self.screenshots = screenshots
         self.clan_name = clan_name
+        self.upload_type = upload_type
     
     @discord.ui.button(label="Correct", style=discord.ButtonStyle.success)
     async def confirm_correct(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1218,6 +1219,7 @@ class MultiMapConfirmationView(discord.ui.View):
                 "user_id": str(self.user_id),
                 "username": interaction.user.display_name,
                 "match_format": self.combined_data.get("match_format", "Multi-Map"),
+                "upload_type": self.upload_type,
                 "clan_name": self.clan_name,
                 "our_score": self.combined_data.get("our_score", 0),
                 "enemy_score": self.combined_data.get("enemy_score", 0),
@@ -1232,8 +1234,11 @@ class MultiMapConfirmationView(discord.ui.View):
             with open(json_file, 'w') as f:
                 json.dump(data, f, indent=2)
             
-            # Post to channel
-            channel_id = int(os.getenv('SCRIM_HIGHLIGHTS_CHANNEL_ID'))
+            # Post to channel - determine which channel based on upload_type
+            if self.upload_type == "tournament":
+                channel_id = int(os.getenv('TOURNAMENT_HIGHLIGHTS_CHANNEL_ID'))
+            else:  # scrim
+                channel_id = int(os.getenv('SCRIM_HIGHLIGHTS_CHANNEL_ID'))
             channel = self.bot.get_channel(channel_id)
             
             if channel:
