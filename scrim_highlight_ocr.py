@@ -8,6 +8,80 @@ import base64
 from datetime import datetime
 import json
 
+class ScoreEditModal(discord.ui.Modal):
+    def __init__(self, extracted_data, user_id, original_message, bot):
+        super().__init__(title="Edit Match Score")
+        self.extracted_data = extracted_data
+        self.user_id = user_id
+        self.original_message = original_message
+        self.bot = bot
+        
+        # Add input fields
+        self.our_score = discord.ui.TextInput(
+            label="Our Score",
+            placeholder="Enter our team's score (e.g., 13)",
+            default=str(extracted_data.get("our_score", "")),
+            max_length=3
+        )
+        self.enemy_score = discord.ui.TextInput(
+            label="Enemy Score", 
+            placeholder="Enter enemy team's score (e.g., 10)",
+            default=str(extracted_data.get("enemy_score", "")),
+            max_length=3
+        )
+        self.result = discord.ui.TextInput(
+            label="Result",
+            placeholder="win, defeat, or draw",
+            default=extracted_data.get("result", ""),
+            max_length=10
+        )
+        
+        self.add_item(self.our_score)
+        self.add_item(self.enemy_score)
+        self.add_item(self.result)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Validate input
+            try:
+                our_score_val = int(self.our_score.value)
+                enemy_score_val = int(self.enemy_score.value)
+            except ValueError:
+                await interaction.response.send_message("❌ Scores must be valid numbers!", ephemeral=True)
+                return
+            
+            result_val = self.result.value.lower().strip()
+            if result_val not in ["win", "defeat", "draw"]:
+                await interaction.response.send_message("❌ Result must be 'win', 'defeat', or 'draw'!", ephemeral=True)
+                return
+            
+            # Update the extracted data
+            self.extracted_data["our_score"] = our_score_val
+            self.extracted_data["enemy_score"] = enemy_score_val  
+            self.extracted_data["result"] = result_val
+            
+            # Create updated confirmation view
+            view = ScoreConfirmationView(self.extracted_data, self.user_id, self.original_message, self.bot)
+            
+            # Create updated embed
+            embed = discord.Embed(
+                title="Updated Score Confirmation",
+                description="Please confirm the edited score information:",
+                color=0x00ff88
+            )
+            
+            embed.add_field(name="Match Format", value=self.extracted_data.get("match_format", "BO1"), inline=True)
+            embed.add_field(name="Our Score", value=str(our_score_val), inline=True)
+            embed.add_field(name="Enemy Score", value=str(enemy_score_val), inline=True)
+            embed.add_field(name="Result", value=result_val.title(), inline=True)
+            embed.set_footer(text="Click 'Correct' to save, 'Edit Score' to modify again, or 'Incorrect' to reject")
+            
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            print(f"Error in score edit modal: {e}")
+            await interaction.response.send_message("❌ An error occurred while updating the score.", ephemeral=True)
+
 class ScoreConfirmationView(discord.ui.View):
     def __init__(self, extracted_data, user_id, original_message, bot=None):
         super().__init__(timeout=300)  # 5 minute timeout
@@ -48,6 +122,16 @@ class ScoreConfirmationView(discord.ui.View):
         embed.set_footer(text="Data has been added to the scrim highlights database and posted to channel")
         await interaction.edit_original_response(embed=embed, view=None)
     
+    @discord.ui.button(label="Edit Score", style=discord.ButtonStyle.secondary)
+    async def edit_score(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This is not your confirmation!", ephemeral=True)
+            return
+        
+        # Create a modal for editing scores
+        modal = ScoreEditModal(self.extracted_data, self.user_id, self.original_message, self.bot)
+        await interaction.response.send_modal(modal)
+    
     @discord.ui.button(label="Incorrect", style=discord.ButtonStyle.danger)
     async def confirm_incorrect(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
@@ -86,8 +170,17 @@ class ScoreConfirmationView(discord.ui.View):
             if hasattr(self.bot, 'user_ocr_data') and self.user_id in self.bot.user_ocr_data:
                 upload_type = self.bot.user_ocr_data[self.user_id].get("upload_type", "scrim")
             
-            # Create new entry
-            highlight_id = str(len(data) + 1)
+            # Create new entry with proper unique ID
+            # Find the highest existing ID and increment
+            max_id = 0
+            for existing_id in data.keys():
+                try:
+                    id_num = int(existing_id)
+                    max_id = max(max_id, id_num)
+                except ValueError:
+                    continue
+            highlight_id = str(max_id + 1)
+            
             entry = {
                 "id": highlight_id,
                 "user_id": str(self.user_id),
@@ -309,7 +402,7 @@ class ValOCRHandler:
                 inline=True
             )
             
-            embed.set_footer(text="Click 'Correct' to save or 'Incorrect' to reject")
+            embed.set_footer(text="Click 'Correct' to save, 'Edit Score' to modify, or 'Incorrect' to reject")
             
             # Send confirmation with buttons
             view = ScoreConfirmationView(extracted_data, message.author.id, message, bot)
@@ -1233,8 +1326,16 @@ class MultiMapConfirmationView(discord.ui.View):
             else:
                 data = {}
             
-            # Create new entry
-            highlight_id = str(len(data) + 1)
+            # Create new entry with proper unique ID
+            # Find the highest existing ID and increment
+            max_id = 0
+            for existing_id in data.keys():
+                try:
+                    id_num = int(existing_id)
+                    max_id = max(max_id, id_num)
+                except ValueError:
+                    continue
+            highlight_id = str(max_id + 1)
             
             entry = {
                 "id": highlight_id,
