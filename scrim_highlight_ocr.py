@@ -217,7 +217,7 @@ class ScoreConfirmationView(discord.ui.View):
             
         except Exception as e:
             print(f"Error counting wins/losses: {e}")
-            return 0, 0
+            return 0, 0, 0
 
 class ValOCRHandler:
     def __init__(self):
