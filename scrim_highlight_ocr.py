@@ -81,6 +81,11 @@ class ScoreConfirmationView(discord.ui.View):
             except (FileNotFoundError, json.JSONDecodeError):
                 data = {}
             
+            # Get upload type from stored data
+            upload_type = "scrim"  # Default
+            if hasattr(self.bot, 'user_ocr_data') and self.user_id in self.bot.user_ocr_data:
+                upload_type = self.bot.user_ocr_data[self.user_id].get("upload_type", "scrim")
+            
             # Create new entry
             highlight_id = str(len(data) + 1)
             entry = {
@@ -88,6 +93,7 @@ class ScoreConfirmationView(discord.ui.View):
                 "user_id": str(self.user_id),
                 "username": interaction.user.display_name,
                 "match_format": self.extracted_data.get("match_format", "BO1"),
+                "upload_type": upload_type,
                 "clan_name": clan_name,
                 "our_score": self.extracted_data.get("our_score", 0),
                 "enemy_score": self.extracted_data.get("enemy_score", 0),
@@ -114,18 +120,27 @@ class ScoreConfirmationView(discord.ui.View):
                 print("Bot instance not available for posting to channel")
                 return
                 
-            # Get the scrim highlights channel ID from environment
-            channel_id = int(os.getenv('SCRIM_HIGHLIGHTS_CHANNEL_ID'))
+            # Get upload type and determine channel
+            upload_type = "scrim"  # Default
+            clan_name = "Unknown"
+            if hasattr(self.bot, 'user_ocr_data') and self.user_id in self.bot.user_ocr_data:
+                ocr_data = self.bot.user_ocr_data[self.user_id]
+                clan_name = ocr_data.get("clan_name", "Unknown")
+                upload_type = ocr_data.get("upload_type", "scrim")
+            
+            # Get the appropriate channel ID based on upload type
+            if upload_type == "tournament":
+                channel_id = int(os.getenv('TOURNAMENT_HIGHLIGHTS_CHANNEL_ID'))
+                channel_type_name = "tournament highlights"
+            else:
+                channel_id = int(os.getenv('SCRIM_HIGHLIGHTS_CHANNEL_ID'))
+                channel_type_name = "scrim highlights"
+                
             channel = self.bot.get_channel(channel_id)
             
             if not channel:
-                print(f"Scrim highlights channel with ID {channel_id} not found!")
+                print(f"{channel_type_name.title()} channel with ID {channel_id} not found!")
                 return
-            
-            # Get clan name from stored data
-            clan_name = "Unknown"
-            if hasattr(self.bot, 'user_ocr_data') and self.user_id in self.bot.user_ocr_data:
-                clan_name = self.bot.user_ocr_data[self.user_id].get("clan_name", "Unknown")
             
             # Create the message format based on match result and format
             match_format = self.extracted_data.get("match_format", "BO1")
@@ -378,9 +393,16 @@ class BO2OCRHandler:
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         self.model = genai.GenerativeModel('gemini-2.5-flash')
     
-    async def process_bo2_match(self, message, bot, screenshots, clan_name, user_id):
+    async def process_bo2_match(self, message, bot, screenshots, clan_name, user_id, upload_type='scrim'):
         """Process multiple screenshots for BO2 match"""
         try:
+            # Store instance variables for later use
+            self.bot = bot
+            self.clan_name = clan_name
+            self.user_id = user_id
+            self.upload_type = upload_type
+            self.screenshots = screenshots  # Store for posting later
+            
             # Process each screenshot to get individual map results
             map_results = []
             
@@ -588,6 +610,7 @@ class BO2ConfirmationView(discord.ui.View):
                 "user_id": str(self.user_id),
                 "username": interaction.user.display_name,
                 "match_format": "BO2",
+                "upload_type": getattr(self, 'upload_type', 'scrim'),
                 "clan_name": self.clan_name,
                 "our_score": self.combined_data.get("our_score", 0),
                 "enemy_score": self.combined_data.get("enemy_score", 0),
@@ -611,11 +634,19 @@ class BO2ConfirmationView(discord.ui.View):
     async def post_bo2_to_channel(self, entry):
         """Post BO2 match to channel with both screenshots"""
         try:
-            channel_id = int(os.getenv('SCRIM_HIGHLIGHTS_CHANNEL_ID'))
+            # Get the appropriate channel based on upload type
+            upload_type = entry.get("upload_type", "scrim")
+            if upload_type == "tournament":
+                channel_id = int(os.getenv('TOURNAMENT_HIGHLIGHTS_CHANNEL_ID'))
+                channel_type_name = "tournament highlights"
+            else:
+                channel_id = int(os.getenv('SCRIM_HIGHLIGHTS_CHANNEL_ID'))
+                channel_type_name = "scrim highlights"
+                
             channel = self.bot.get_channel(channel_id)
             
             if not channel:
-                print(f"Channel not found: {channel_id}")
+                print(f"{channel_type_name.title()} channel not found: {channel_id}")
                 return
             
             # Calculate wins/losses/draws

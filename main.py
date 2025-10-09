@@ -26,7 +26,8 @@ required_vars = [
     'GUILD_ID', 
     'CHANNEL_ID', 
     'VALOM_ROLE_ID', 
-    'SCRIM_HIGHLIGHTS_CHANNEL_ID', 
+    'SCRIM_HIGHLIGHTS_CHANNEL_ID',
+    'TOURNAMENT_HIGHLIGHTS_CHANNEL_ID',
     'GEMINI_API_KEY'
 ]
 
@@ -38,6 +39,49 @@ if missing_vars:
     exit(1)
 
 print("✅ All required environment variables found!")
+
+class UploadTypeView(discord.ui.View):
+    def __init__(self, user_id):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.user_id = user_id
+    
+    @discord.ui.select(
+        placeholder="Choose upload type...",
+        options=[
+            discord.SelectOption(label="Scrim", description="Upload scrim match highlights", emoji="⚔️", value="scrim"),
+            discord.SelectOption(label="Tournament", description="Upload tournament match highlights", emoji="🏆", value="tournament"),
+        ]
+    )
+    async def select_upload_type(self, interaction: discord.Interaction, select: discord.ui.Select):
+        selected_type = select.values[0]
+        
+        # Store the selected upload type for this user
+        if not hasattr(interaction.client, 'user_upload_types'):
+            interaction.client.user_upload_types = {}
+        interaction.client.user_upload_types[self.user_id] = selected_type
+        
+        # Create appropriate embed title and description based on type
+        if selected_type == "scrim":
+            title = "Scrim Highlight Upload"
+            description_type = "scrim match"
+            color = 0x9d4edd  # Purple for scrims
+        else:  # tournament
+            title = "Tournament Highlight Upload"
+            description_type = "tournament match"
+            color = 0xffd700  # Gold for tournaments
+        
+        # Ask for match format
+        format_embed = discord.Embed(
+            title=title,
+            description=f"**Step 2: Select Match Format**\n\n"
+                       f"Please select what type of {description_type} this highlight is from using the dropdown below.",
+            color=color
+        )
+        format_embed.set_footer(text=f"Zero Remorse • {selected_type.title()} Highlights System")
+        
+        # Create the match format view
+        view = MatchFormatView(self.user_id)
+        await interaction.response.edit_message(embed=format_embed, view=view)
 
 class MatchFormatView(discord.ui.View):
     def __init__(self, user_id):
@@ -62,19 +106,25 @@ class MatchFormatView(discord.ui.View):
             interaction.client.user_match_formats = {}
         interaction.client.user_match_formats[self.user_id] = selected_format
         
+        # Get upload type to customize the title
+        upload_type = getattr(interaction.client, 'user_upload_types', {}).get(self.user_id, 'scrim')
+        title_prefix = "Tournament" if upload_type == "tournament" else "Scrim"
+        color = 0xffd700 if upload_type == "tournament" else 0xffa500
+        
         # Ask for clan name
         clan_embed = discord.Embed(
-            title="Enter Clan Name",
-            description=f"**Step 2: Enter Clan Name**\n\n"
+            title=f"Enter {title_prefix} Opponent Name",
+            description=f"**Step 3: Enter Opponent Name**\n\n"
+                       f"Upload Type: **{title_prefix}**\n"
                        f"Match Format: **{selected_format}** (Best of {selected_format[2]})\n\n"
-                       f"**Please type the name of the clan you played against:**\n"
-                       f"Just send a message with the clan name.\n"
+                       f"**Please type the name of the team/clan you played against:**\n"
+                       f"Just send a message with the opponent name.\n"
                        f"Type **'cancel'** to abort this process.\n\n"
                        f"**Example:**\n"
                        f"*Team Liquid*",
-            color=0xffa500
+            color=color
         )
-        clan_embed.set_footer(text="Zero Remorse • Waiting for clan name...")
+        clan_embed.set_footer(text=f"Zero Remorse • Waiting for opponent name...")
         
         await interaction.response.edit_message(embed=clan_embed, view=None)
 
@@ -104,18 +154,18 @@ class UploadHighlightView(discord.ui.View):
             )
             return
         
-        # User has Valom role - send DM with dropdown
+        # User has Valom role - send DM with upload type selection
         try:
             dm_embed = discord.Embed(
-                title="Scrim Highlight Upload",
-                description="**Step 1: Select Match Format**\n\n"
-                           "Please select what type of match this highlight is from using the dropdown below.",
+                title="Highlight Upload",
+                description="**Step 1: Select Upload Type**\n\n"
+                           "Please select what type of highlight you want to upload using the dropdown below.",
                 color=0x9d4edd
             )
-            dm_embed.set_footer(text="Zero Remorse • Scrim Highlights System")
+            dm_embed.set_footer(text="Zero Remorse • Highlight Upload System")
             
-            # Create the view with dropdown
-            view = MatchFormatView(interaction.user.id)
+            # Create the view with upload type dropdown
+            view = UploadTypeView(interaction.user.id)
             await interaction.user.send(embed=dm_embed, view=view)
             
             # Confirm in the channel (ephemeral) using followup

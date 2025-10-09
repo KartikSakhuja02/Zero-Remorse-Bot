@@ -321,12 +321,20 @@ class ScrimHighlightHandler:
         # Special handling for BO1 - use OCR to extract scores
         if selected_format == "BO1":
             print("BO1 detected - using OCR processing")
+            
+            # Get upload type (scrim or tournament)
+            upload_type = getattr(bot, 'user_upload_types', {}).get(message.author.id, 'scrim')
+            
             ocr_handler = ValOCRHandler()
             
-            # Store clan name in the OCR data
+            # Store clan name and upload type in the OCR data
             if not hasattr(bot, 'user_ocr_data'):
                 bot.user_ocr_data = {}
-            bot.user_ocr_data[message.author.id] = {"clan_name": clan_name, "match_format": selected_format}
+            bot.user_ocr_data[message.author.id] = {
+                "clan_name": clan_name, 
+                "match_format": selected_format,
+                "upload_type": upload_type
+            }
             
             await ocr_handler.process_valorant_screenshot(message, bot, selected_format)
             
@@ -335,13 +343,19 @@ class ScrimHighlightHandler:
                 del bot.user_match_formats[message.author.id]
             if hasattr(bot, 'user_clan_names') and message.author.id in bot.user_clan_names:
                 del bot.user_clan_names[message.author.id]
+            if hasattr(bot, 'user_upload_types') and message.author.id in bot.user_upload_types:
+                del bot.user_upload_types[message.author.id]
             
             return
         
         # Special handling for BO2-BO5 - collect multiple screenshots
         if selected_format in ["BO2", "BO3", "BO4", "BO5"] and attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
             print(f"{selected_format} detected - collecting screenshots")
-            await self.handle_multi_map_upload(message, bot, selected_format, clan_name)
+            
+            # Get upload type (scrim or tournament)
+            upload_type = getattr(bot, 'user_upload_types', {}).get(message.author.id, 'scrim')
+            
+            await self.handle_multi_map_upload(message, bot, selected_format, clan_name, upload_type)
             return
         
         # Save to JSON file
@@ -494,7 +508,7 @@ class ScrimHighlightHandler:
         
         await message.channel.send(f"{message.author.mention} Your highlight has been posted!", delete_after=5)
     
-    async def handle_multi_map_upload(self, message, bot, selected_format, clan_name):
+    async def handle_multi_map_upload(self, message, bot, selected_format, clan_name, upload_type='scrim'):
         """Handle multi-map screenshot collection for BO2-BO5"""
         try:
             # Initialize multi-map data storage
@@ -508,7 +522,8 @@ class ScrimHighlightHandler:
                 bot.user_multi_map_data[user_id] = {
                     "screenshots": [],
                     "clan_name": clan_name,
-                    "match_format": selected_format
+                    "match_format": selected_format,
+                    "upload_type": upload_type
                 }
             
             # Add the screenshot to the collection
@@ -547,26 +562,28 @@ class ScrimHighlightHandler:
             screenshots = multi_map_data["screenshots"]
             clan_name = multi_map_data["clan_name"]
             match_format = multi_map_data["match_format"]
+            upload_type = multi_map_data.get("upload_type", "scrim")  # Default to scrim for backward compatibility
             
-            await message.reply(f"**Processing {len(screenshots)} screenshot(s) for {match_format} match...**")
+            upload_type_text = "tournament" if upload_type == "tournament" else "scrim"
+            await message.reply(f"**Processing {len(screenshots)} screenshot(s) for {match_format} {upload_type_text} match...**")
             
             # Import and use the appropriate OCR handler based on format
             if match_format == "BO2":
                 from scrim_highlight_ocr import BO2OCRHandler
                 ocr_handler = BO2OCRHandler()
-                await ocr_handler.process_bo2_match(message, bot, screenshots, clan_name, user_id)
+                await ocr_handler.process_bo2_match(message, bot, screenshots, clan_name, user_id, upload_type)
             elif match_format == "BO3":
                 from scrim_highlight_ocr import BO3OCRHandler
                 ocr_handler = BO3OCRHandler()
-                await ocr_handler.process_bo3_match(message, bot, screenshots, clan_name, user_id)
+                await ocr_handler.process_bo3_match(message, bot, screenshots, clan_name, user_id, upload_type)
             elif match_format == "BO4":
                 from scrim_highlight_ocr import BO4OCRHandler
                 ocr_handler = BO4OCRHandler()
-                await ocr_handler.process_bo4_match(message, bot, screenshots, clan_name, user_id)
+                await ocr_handler.process_bo4_match(message, bot, screenshots, clan_name, user_id, upload_type)
             elif match_format == "BO5":
                 from scrim_highlight_ocr import BO5OCRHandler
                 ocr_handler = BO5OCRHandler()
-                await ocr_handler.process_bo5_match(message, bot, screenshots, clan_name, user_id)
+                await ocr_handler.process_bo5_match(message, bot, screenshots, clan_name, user_id, upload_type)
             
             # Clean up multi-map data
             if user_id in bot.user_multi_map_data:
@@ -577,6 +594,8 @@ class ScrimHighlightHandler:
                 del bot.user_match_formats[user_id]
             if hasattr(bot, 'user_clan_names') and user_id in bot.user_clan_names:
                 del bot.user_clan_names[user_id]
+            if hasattr(bot, 'user_upload_types') and user_id in bot.user_upload_types:
+                del bot.user_upload_types[user_id]
                 
         except Exception as e:
             print(f"Error processing {match_format} screenshots: {e}")
