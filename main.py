@@ -339,6 +339,100 @@ async def setup_ui(interaction: discord.Interaction):
     except Exception as e:
         print(f"Error responding to setup UI command: {e}")
 
+@bot.tree.command(name="reset_stats", description="Reset all wins, losses, and draws count (Admin only)", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
+async def reset_stats(interaction: discord.Interaction):
+    """Slash command to reset all match statistics"""
+    if not interaction.user.guild_permissions.administrator:
+        try:
+            await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
+        except discord.NotFound:
+            print("Admin check interaction expired")
+        return
+    
+    try:
+        # Defer the response to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+        
+        # Import required modules
+        import json
+        import os
+        from datetime import datetime
+        
+        json_file = "scrim_highlight.json"
+        
+        # Check if file exists and get current stats
+        current_stats = {"wins": 0, "losses": 0, "draws": 0, "total_matches": 0}
+        if os.path.exists(json_file):
+            try:
+                with open(json_file, 'r') as f:
+                    content = f.read().strip()
+                    if content:
+                        data = json.loads(content)
+                        # Count current stats
+                        for entry in data.values():
+                            if isinstance(entry, dict):
+                                result = entry.get("result", "").lower()
+                                if result == "win":
+                                    current_stats["wins"] += 1
+                                elif result == "defeat":
+                                    current_stats["losses"] += 1
+                                elif result == "draw":
+                                    current_stats["draws"] += 1
+                                current_stats["total_matches"] += 1
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass  # File doesn't exist or is empty, stats remain 0
+        
+        # Create backup with timestamp
+        backup_file = f"scrim_highlight_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        if os.path.exists(json_file):
+            import shutil
+            shutil.copy2(json_file, backup_file)
+            print(f"Created backup: {backup_file}")
+        
+        # Clear the JSON file (reset to empty)
+        with open(json_file, 'w') as f:
+            json.dump({}, f, indent=2)
+        
+        # Send confirmation message
+        embed = discord.Embed(
+            title="📊 Statistics Reset Complete",
+            description="All match statistics have been successfully reset to zero.",
+            color=0xff6b6b
+        )
+        
+        embed.add_field(
+            name="Previous Stats",
+            value=f"**Wins:** {current_stats['wins']}\n**Losses:** {current_stats['losses']}\n**Draws:** {current_stats['draws']}\n**Total Matches:** {current_stats['total_matches']}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="Current Stats",
+            value="**Wins:** 0\n**Losses:** 0\n**Draws:** 0\n**Total Matches:** 0",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="Backup Created",
+            value=f"📁 `{backup_file}`",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"Reset by {interaction.user.display_name} • Zero Remorse Stats")
+        embed.timestamp = datetime.now()
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        print(f"Stats reset by {interaction.user.display_name} ({interaction.user.id})")
+        
+    except discord.NotFound:
+        print("Reset stats interaction expired")
+    except Exception as e:
+        print(f"Error resetting stats: {e}")
+        try:
+            await interaction.followup.send("❌ **Error**\n\nFailed to reset statistics. Please try again or contact support.", ephemeral=True)
+        except:
+            pass
+
 if __name__ == "__main__":
     # Get port for web services (required by some hosting platforms)
     port = int(os.environ.get('PORT', 8080))
