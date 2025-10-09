@@ -602,29 +602,136 @@ async def set_stats(interaction: discord.Interaction, wins: int = 0, losses: int
         except:
             pass
 
-@bot.tree.context_menu(name="Edit Match Score", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
-async def edit_match_score_context(interaction: discord.Interaction, message: discord.Message):
-    """Context menu command to edit match scores"""
+@bot.tree.context_menu(name="Edit Message", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
+async def edit_message_context(interaction: discord.Interaction, message: discord.Message):
+    """Context menu command to edit any bot message"""
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
         return
     
-    # Verify it's a bot message with match results
-    if message.author.id != bot.user.id or not message.embeds:
-        await interaction.response.send_message("❌ This message doesn't contain match results to edit.", ephemeral=True)
+    # Verify it's a bot message
+    if message.author.id != bot.user.id:
+        await interaction.response.send_message("❌ You can only edit messages sent by the bot.", ephemeral=True)
         return
     
-    # Check if it's a match result message
-    embed = message.embeds[0]
-    has_match_data = any(field.name in ["Match Result", "📊 Match Summary", "Score"] for field in embed.fields)
-    
-    if not has_match_data:
-        await interaction.response.send_message("❌ This message doesn't contain match results to edit.", ephemeral=True)
-        return
-    
-    # Create a modal for score editing
-    modal = ScoreEditMatchModal(message)
+    # Create a modal for message editing
+    modal = EditMessageModal(message)
     await interaction.response.send_modal(modal)
+
+class EditMessageModal(discord.ui.Modal, title="Edit Bot Message"):
+    def __init__(self, message_to_edit):
+        super().__init__()
+        self.message_to_edit = message_to_edit
+        
+        # Extract current content
+        current_content = ""
+        current_title = ""
+        current_description = ""
+        
+        if message_to_edit.content:
+            current_content = message_to_edit.content
+        
+        if message_to_edit.embeds:
+            embed = message_to_edit.embeds[0]
+            if embed.title:
+                current_title = embed.title
+            if embed.description:
+                current_description = embed.description
+        
+        # Set default values
+        if current_content:
+            self.message_content.default = current_content
+        if current_title:
+            self.embed_title.default = current_title
+        if current_description:
+            self.embed_description.default = current_description
+
+    message_content = discord.ui.TextInput(
+        label="Message Content (optional)",
+        placeholder="Enter message content or leave empty...",
+        required=False,
+        max_length=2000,
+        style=discord.TextStyle.paragraph
+    )
+    
+    embed_title = discord.ui.TextInput(
+        label="Embed Title (optional)",
+        placeholder="Enter embed title or leave empty...",
+        required=False,
+        max_length=256
+    )
+    
+    embed_description = discord.ui.TextInput(
+        label="Embed Description (optional)",
+        placeholder="Enter embed description or leave empty...",
+        required=False,
+        max_length=4000,
+        style=discord.TextStyle.paragraph
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Prepare new content
+            new_content = self.message_content.value.strip() if self.message_content.value else None
+            new_title = self.embed_title.value.strip() if self.embed_title.value else None
+            new_description = self.embed_description.value.strip() if self.embed_description.value else None
+            
+            # Handle embed editing
+            embed = None
+            if self.message_to_edit.embeds:
+                # Edit existing embed
+                embed = self.message_to_edit.embeds[0]
+                if new_title is not None:
+                    embed.title = new_title
+                if new_description is not None:
+                    embed.description = new_description
+            elif new_title or new_description:
+                # Create new embed
+                embed = discord.Embed()
+                if new_title:
+                    embed.title = new_title
+                if new_description:
+                    embed.description = new_description
+                embed.color = 0x3498db  # Default blue color
+            
+            # Update the message
+            await self.message_to_edit.edit(content=new_content, embed=embed)
+            
+            # Send confirmation
+            embed_confirm = discord.Embed(
+                title="✅ Message Updated",
+                description="Successfully edited the bot message.",
+                color=0x00ff88
+            )
+            
+            changes = []
+            if new_content:
+                changes.append(f"**Content:** Updated")
+            if new_title:
+                changes.append(f"**Title:** {new_title}")
+            if new_description:
+                changes.append(f"**Description:** Updated")
+            
+            if changes:
+                embed_confirm.add_field(
+                    name="Changes Made",
+                    value="\n".join(changes),
+                    inline=False
+                )
+            
+            embed_confirm.set_footer(text=f"Edited by {interaction.user.display_name}")
+            
+            await interaction.followup.send(embed=embed_confirm, ephemeral=True)
+            print(f"Message edited by {interaction.user.display_name}")
+            
+        except Exception as e:
+            print(f"Error in message edit modal: {e}")
+            try:
+                await interaction.followup.send("❌ Failed to update the message. Please try again.", ephemeral=True)
+            except:
+                pass
 
 class ScoreEditMatchModal(discord.ui.Modal, title="Edit Match Score"):
     def __init__(self, message_to_edit):
@@ -819,9 +926,9 @@ class ScoreEditMatchModal(discord.ui.Modal, title="Edit Match Score"):
             except:
                 pass
 
-@bot.tree.command(name="edit_message", description="Edit a bot message by replying to it (Admin only)", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
-async def edit_message(interaction: discord.Interaction, new_our_score: int, new_enemy_score: int):
-    """Slash command to edit a bot message's score by replying to it"""
+@bot.tree.command(name="quick_edit", description="Quick edit recent bot message content (Admin only)", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
+async def quick_edit(interaction: discord.Interaction, new_content: str):
+    """Slash command to quickly edit the most recent bot message"""
     if not interaction.user.guild_permissions.administrator:
         try:
             await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
@@ -830,173 +937,51 @@ async def edit_message(interaction: discord.Interaction, new_our_score: int, new
         return
     
     try:
-        # Check if this is a reply to a message
-        if not hasattr(interaction, 'message') or not interaction.message:
-            # Check if there's a referenced message in the channel
-            referenced_message = None
-            
-            # Try to get the message being replied to from recent messages
-            async for message in interaction.channel.history(limit=10):
-                if message.author.id == bot.user.id and message.embeds:
-                    # Check if this looks like a match result message
-                    embed = message.embeds[0]
-                    if any(field.name in ["Match Result", "📊 Match Summary"] for field in embed.fields):
-                        referenced_message = message
-                        break
-            
-            if not referenced_message:
-                await interaction.response.send_message(
-                    "❌ **Error**\n\nPlease reply to a bot message containing match results to edit it.", 
-                    ephemeral=True
-                )
-                return
-        else:
-            referenced_message = interaction.message
-        
-        # Verify it's a bot message with embeds
-        if referenced_message.author.id != bot.user.id:
-            await interaction.response.send_message(
-                "❌ **Error**\n\nYou can only edit messages sent by the bot.", 
-                ephemeral=True
-            )
-            return
-        
-        if not referenced_message.embeds:
-            await interaction.response.send_message(
-                "❌ **Error**\n\nThis message doesn't contain match results to edit.", 
-                ephemeral=True
-            )
-            return
-        
-        # Defer the response
         await interaction.response.defer(ephemeral=True)
         
-        # Get the embed to edit
-        embed = referenced_message.embeds[0]
+        # Find the most recent bot message in this channel
+        recent_bot_message = None
+        async for message in interaction.channel.history(limit=20):
+            if message.author.id == bot.user.id:
+                recent_bot_message = message
+                break
         
-        # Determine the result based on scores
-        if new_our_score > new_enemy_score:
-            result = "WIN"
-            result_emoji = "🏆"
-            color = 0x00ff88
-        elif new_our_score < new_enemy_score:
-            result = "DEFEAT"
-            result_emoji = "💔"
-            color = 0xff4444
-        else:
-            result = "DRAW"
-            result_emoji = "🤝"
-            color = 0xffaa00
+        if not recent_bot_message:
+            await interaction.followup.send(
+                "❌ **Error**\n\nNo recent bot messages found in this channel.", 
+                ephemeral=True
+            )
+            return
         
-        # Update embed title if it exists
-        if embed.title:
-            # Update title with new result
-            if "WIN" in embed.title or "DEFEAT" in embed.title or "DRAW" in embed.title:
-                parts = embed.title.split(" ")
-                # Replace the result part
-                for i, part in enumerate(parts):
-                    if part in ["WIN", "DEFEAT", "DRAW"]:
-                        parts[i] = result
-                        break
-                embed.title = " ".join(parts)
+        # Update the message content
+        embed = None
+        if recent_bot_message.embeds:
+            embed = recent_bot_message.embeds[0]
         
-        # Update embed color
-        embed.color = color
-        
-        # Update fields with new scores
-        for field in embed.fields:
-            if "Score" in field.name or "Result" in field.name or "Match Summary" in field.name:
-                # Update the score in the field value
-                field_lines = field.value.split('\n')
-                updated_lines = []
-                
-                for line in field_lines:
-                    if "**Our Score:**" in line:
-                        updated_lines.append(f"**Our Score:** {new_our_score}")
-                    elif "**Enemy Score:**" in line:
-                        updated_lines.append(f"**Enemy Score:** {new_enemy_score}")
-                    elif "**Result:**" in line:
-                        updated_lines.append(f"**Result:** {result_emoji} {result}")
-                    elif "**Final Score:**" in line:
-                        updated_lines.append(f"**Final Score:** {new_our_score} - {new_enemy_score}")
-                    else:
-                        updated_lines.append(line)
-                
-                field.value = '\n'.join(updated_lines)
-        
-        # Update the message
-        await referenced_message.edit(embed=embed)
-        
-        # Also update the JSON data if this was from a match upload
-        try:
-            import json
-            json_file = "scrim_highlight.json"
-            
-            if os.path.exists(json_file):
-                with open(json_file, 'r') as f:
-                    data = json.load(f)
-                
-                # Find and update the corresponding entry
-                # Look for entries with timestamps close to the message creation time
-                message_time = referenced_message.created_at
-                
-                for entry_id, entry in data.items():
-                    if isinstance(entry, dict):
-                        # Check if this entry matches the message timing (within 5 minutes)
-                        try:
-                            from datetime import datetime, timedelta
-                            entry_time = datetime.fromisoformat(entry.get("timestamp", ""))
-                            time_diff = abs((message_time.replace(tzinfo=None) - entry_time).total_seconds())
-                            
-                            if time_diff < 300:  # Within 5 minutes
-                                # Update the entry
-                                entry["our_score"] = new_our_score
-                                entry["enemy_score"] = new_enemy_score
-                                
-                                # Update result
-                                if new_our_score > new_enemy_score:
-                                    entry["result"] = "win"
-                                elif new_our_score < new_enemy_score:
-                                    entry["result"] = "defeat"
-                                else:
-                                    entry["result"] = "draw"
-                                
-                                entry["edited"] = True
-                                entry["edited_by"] = interaction.user.display_name
-                                entry["edited_at"] = datetime.now().isoformat()
-                                
-                                # Save updated data
-                                with open(json_file, 'w') as f:
-                                    json.dump(data, f, indent=2)
-                                
-                                break
-                        except:
-                            continue
-        except Exception as e:
-            print(f"Error updating JSON data: {e}")
+        await recent_bot_message.edit(content=new_content, embed=embed)
         
         # Send confirmation
         embed_confirm = discord.Embed(
-            title="✅ Message Edited Successfully",
-            description=f"Updated the match result with new scores.",
+            title="✅ Message Updated",
+            description=f"Successfully updated the bot message content.",
             color=0x00ff88
         )
         
         embed_confirm.add_field(
-            name="Updated Scores",
-            value=f"**Our Score:** {new_our_score}\n**Enemy Score:** {new_enemy_score}\n**Result:** {result_emoji} {result}",
+            name="New Content",
+            value=new_content[:1000] + ("..." if len(new_content) > 1000 else ""),
             inline=False
         )
         
         embed_confirm.set_footer(text=f"Edited by {interaction.user.display_name}")
         
         await interaction.followup.send(embed=embed_confirm, ephemeral=True)
-        print(f"Message edited by {interaction.user.display_name}: {new_our_score}-{new_enemy_score}")
+        print(f"Message content edited by {interaction.user.display_name}")
         
     except discord.NotFound:
-        print("Edit message interaction expired")
+        print("Quick edit interaction expired")
     except Exception as e:
-        print(f"Error editing message: {e}")
+        print(f"Error in quick edit: {e}")
         try:
             await interaction.followup.send("❌ **Error**\n\nFailed to edit the message. Please try again.", ephemeral=True)
         except:
