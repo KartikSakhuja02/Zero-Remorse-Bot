@@ -13,6 +13,7 @@ try:
 except ImportError:
     KEEP_ALIVE_AVAILABLE = False
     print("ℹ️  Keep-alive not available (Flask not installed)")
+    # Force deployment refresh
 
 # Load environment variables
 load_dotenv()
