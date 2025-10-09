@@ -81,7 +81,13 @@ class UploadTypeView(discord.ui.View):
         
         # Create the match format view
         view = MatchFormatView(self.user_id)
-        await interaction.response.edit_message(embed=format_embed, view=view)
+        try:
+            await interaction.response.edit_message(embed=format_embed, view=view)
+        except discord.NotFound:
+            # Interaction expired
+            print(f"Interaction expired while editing message for upload type selection")
+        except Exception as e:
+            print(f"Error editing message for upload type: {e}")
 
 class MatchFormatView(discord.ui.View):
     def __init__(self, user_id):
@@ -126,7 +132,13 @@ class MatchFormatView(discord.ui.View):
         )
         clan_embed.set_footer(text=f"Zero Remorse • Waiting for opponent name...")
         
-        await interaction.response.edit_message(embed=clan_embed, view=None)
+        try:
+            await interaction.response.edit_message(embed=clan_embed, view=None)
+        except discord.NotFound:
+            # Interaction expired
+            print(f"Interaction expired while editing message for match format selection")
+        except Exception as e:
+            print(f"Error editing message for match format: {e}")
 
 class UploadHighlightView(discord.ui.View):
     def __init__(self):
@@ -139,8 +151,16 @@ class UploadHighlightView(discord.ui.View):
     )
     async def upload_highlight(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle the upload scrim highlight button click"""
-        # Defer the response immediately to prevent timeout issues
-        await interaction.response.defer(ephemeral=True)
+        # Try to defer the response immediately to prevent timeout issues
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.NotFound:
+            # Interaction has expired, just return silently
+            print(f"Interaction expired for user {interaction.user.display_name}")
+            return
+        except Exception as e:
+            print(f"Error deferring interaction: {e}")
+            return
         
         # Check if user has the Valom role using role ID
         valom_role_id = int(os.getenv('VALOM_ROLE_ID'))
@@ -305,11 +325,19 @@ bot = ZeroRemorseBot()
 async def setup_ui(interaction: discord.Interaction):
     """Slash command to manually setup the UI"""
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
+        try:
+            await interaction.response.send_message("You need administrator permissions to use this command!", ephemeral=True)
+        except discord.NotFound:
+            print("Admin check interaction expired")
         return
     
     await bot.send_ui_to_channel(force_recreate=True)
-    await interaction.response.send_message("UI has been recreated in the designated channel!", ephemeral=True)
+    try:
+        await interaction.response.send_message("UI has been recreated in the designated channel!", ephemeral=True)
+    except discord.NotFound:
+        print("Setup UI success interaction expired")
+    except Exception as e:
+        print(f"Error responding to setup UI command: {e}")
 
 if __name__ == "__main__":
     # Get port for web services (required by some hosting platforms)
