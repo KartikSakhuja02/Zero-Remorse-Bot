@@ -214,6 +214,128 @@ class UploadHighlightView(discord.ui.View):
                 ephemeral=True
             )
 
+class DmModal(discord.ui.Modal, title='Send DM to Role Members'):
+    def __init__(self, user_id: int, role_id: int, role_name: str):
+        super().__init__()
+        self.user_id = user_id
+        self.role_id = role_id
+        self.role_name = role_name
+
+    message_title = discord.ui.TextInput(
+        label='Message Title (Optional)',
+        placeholder='Enter a title for your message...',
+        required=False,
+        max_length=100
+    )
+
+    message_content = discord.ui.TextInput(
+        label='Message Content',
+        style=discord.TextStyle.paragraph,
+        placeholder='Type your message here...',
+        required=True,
+        max_length=1900
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        role = interaction.guild.get_role(self.role_id) if interaction.guild else None
+        if not role:
+            await interaction.followup.send(
+                "Role not found. Please check the role ID configuration.",
+                ephemeral=True
+            )
+            return
+
+        members = [member for member in role.members if not member.bot]
+        
+        # Create the message to send
+        title_text = self.message_title.value.strip() if self.message_title.value else None
+        content_text = self.message_content.value.strip()
+        
+        if title_text:
+            full_message = f"**{title_text}**\n\n{content_text}"
+        else:
+            full_message = content_text
+            
+        success_count = 0
+        failed_count = 0
+
+        for member in members:
+            try:
+                await member.send(full_message)
+                success_count += 1
+            except (discord.Forbidden, discord.HTTPException):
+                failed_count += 1
+
+        await interaction.followup.send(
+            f"DM broadcast complete!\n"
+            f"✅ Successfully sent to **{success_count}** members\n"
+            f"❌ Failed to send to **{failed_count}** members",
+            ephemeral=True
+        )
+
+class DmModal(discord.ui.Modal, title='Send DM to Role Members'):
+    def __init__(self, user_id: int, role_id: int, role_name: str):
+        super().__init__()
+        self.user_id = user_id
+        self.role_id = role_id
+        self.role_name = role_name
+
+    message_title = discord.ui.TextInput(
+        label='Message Title (Optional)',
+        placeholder='Enter a title for your message...',
+        required=False,
+        max_length=100
+    )
+
+    message_content = discord.ui.TextInput(
+        label='Message Content',
+        style=discord.TextStyle.paragraph,
+        placeholder='Type your message here...',
+        required=True,
+        max_length=1900
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        role = interaction.guild.get_role(self.role_id) if interaction.guild else None
+        if not role:
+            await interaction.followup.send(
+                "Role not found. Please check the role ID configuration.",
+                ephemeral=True
+            )
+            return
+
+        members = [member for member in role.members if not member.bot]
+        
+        # Create the message to send
+        title_text = self.message_title.value.strip() if self.message_title.value else None
+        content_text = self.message_content.value.strip()
+        
+        if title_text:
+            full_message = f"**{title_text}**\n\n{content_text}"
+        else:
+            full_message = content_text
+            
+        success_count = 0
+        failed_count = 0
+
+        for member in members:
+            try:
+                await member.send(full_message)
+                success_count += 1
+            except (discord.Forbidden, discord.HTTPException):
+                failed_count += 1
+
+        await interaction.followup.send(
+            f"DM broadcast complete!\n"
+            f"✅ Successfully sent to **{success_count}** members\n"
+            f"❌ Failed to send to **{failed_count}** members",
+            ephemeral=True
+        )
+
 class DmRoleSelectView(discord.ui.View):
     def __init__(self, invoker_id: int, message_content: str, role_id: int, role_name: str):
         super().__init__(timeout=300)
@@ -253,51 +375,26 @@ class DmRoleSelectView(discord.ui.View):
             )
             return
 
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
+        # Open the DM composition modal
         role = interaction.guild.get_role(self.role_id) if interaction.guild else None
         if not role:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "Role not found. Please check the role ID configuration.",
                 ephemeral=True
             )
             return
-
-        # Fetch guild members to get role members without privileged intents
-        try:
-            members = []
-            async for member in interaction.guild.fetch_members(limit=None):
-                if not member.bot and role in member.roles:
-                    members.append(member)
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "Cannot fetch guild members. Please enable 'Server Members Intent' in Discord Developer Portal.",
-                ephemeral=True
-            )
-            return
-        success_count = 0
-        failed_count = 0
-
-        for member in members:
-            try:
-                await member.send(self.message_content)
-                success_count += 1
-            except (discord.Forbidden, discord.HTTPException):
-                failed_count += 1
-
+            
+        modal = DmModal(interaction.user.id, self.role_id, role.name)
+        await interaction.response.send_modal(modal)
+        
         self.completed = True
         for child in self.children:
             child.disabled = True
-
+            
         try:
             await interaction.message.edit(view=self)
         except Exception:
             pass
-
-        await interaction.followup.send(
-            f"DM broadcast complete. Sent to **{success_count}** members. Failed: **{failed_count}**.",
-            ephemeral=True
-        )
 
 class ZeroRemorseBot(commands.Bot):
     def __init__(self):
@@ -307,6 +404,7 @@ class ZeroRemorseBot(commands.Bot):
         intents.guilds = True
         intents.guild_messages = True
         intents.guild_reactions = True
+        intents.members = True  # Required to access role members for DM broadcasts
         
         super().__init__(
             command_prefix=os.getenv('BOT_PREFIX', '!'),
@@ -427,8 +525,7 @@ async def setup_ui(interaction: discord.Interaction):
         print(f"Error responding to setup UI command: {e}")
 
 @bot.tree.command(name="dm", description="Send a DM to all members with the Valom role", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
-@app_commands.describe(message="Message to send to Valom role members")
-async def dm_broadcast(interaction: discord.Interaction, message: str):
+async def dm_broadcast(interaction: discord.Interaction):
     """Slash command to DM all members with the Valom role (restricted to X/Manager roles)"""
     x_role_id = int(os.getenv('X_ROLE_ID'))
     manager_role_id = int(os.getenv('MANAGER_ROLE_ID'))
@@ -451,18 +548,17 @@ async def dm_broadcast(interaction: discord.Interaction, message: str):
         )
         return
 
-    preview = message if len(message) <= 1000 else f"{message[:1000]}..."
     embed = discord.Embed(
         title="DM Broadcast",
-        description="Select the role to receive this DM.",
+        description="Select the role to receive your DM message.",
         color=0x2F3136
     )
     embed.add_field(name="Target Role", value=f"<@&{valom_role_id}>", inline=False)
-    embed.add_field(name="Message Preview", value=preview, inline=False)
+    embed.add_field(name="Instructions", value="Click the dropdown below and select the role. A message composition window will open.", inline=False)
 
     view = DmRoleSelectView(
         invoker_id=interaction.user.id,
-        message_content=message,
+        message_content="",
         role_id=valom_role_id,
         role_name=role.name
     )
