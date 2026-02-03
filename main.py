@@ -263,7 +263,18 @@ class DmRoleSelectView(discord.ui.View):
             )
             return
 
-        members = [member for member in role.members if not member.bot]
+        # Fetch guild members to get role members without privileged intents
+        try:
+            members = []
+            async for member in interaction.guild.fetch_members(limit=None):
+                if not member.bot and role in member.roles:
+                    members.append(member)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "Cannot fetch guild members. Please enable 'Server Members Intent' in Discord Developer Portal.",
+                ephemeral=True
+            )
+            return
         success_count = 0
         failed_count = 0
 
@@ -296,7 +307,6 @@ class ZeroRemorseBot(commands.Bot):
         intents.guilds = True
         intents.guild_messages = True
         intents.guild_reactions = True
-        intents.members = True  # Required to access role members for DM broadcasts
         
         super().__init__(
             command_prefix=os.getenv('BOT_PREFIX', '!'),
