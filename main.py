@@ -26,6 +26,8 @@ required_vars = [
     'GUILD_ID', 
     'CHANNEL_ID', 
     'VALOM_ROLE_ID', 
+    'X_ROLE_ID',
+    'MANAGER_ROLE_ID',
     'SCRIM_HIGHLIGHTS_CHANNEL_ID',
     'TOURNAMENT_HIGHLIGHTS_CHANNEL_ID',
     'GEMINI_API_KEY'
@@ -212,6 +214,80 @@ class UploadHighlightView(discord.ui.View):
                 ephemeral=True
             )
 
+class DmRoleSelectView(discord.ui.View):
+    def __init__(self, invoker_id: int, message_content: str, role_id: int, role_name: str):
+        super().__init__(timeout=300)
+        self.invoker_id = invoker_id
+        self.message_content = message_content
+        self.role_id = role_id
+        self.completed = False
+
+        options = [
+            discord.SelectOption(
+                label=role_name,
+                value=str(role_id),
+                description="Send DM to all members with this role"
+            )
+        ]
+        self.role_select = discord.ui.Select(
+            placeholder="Select role to DM...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+        self.role_select.callback = self.select_callback
+        self.add_item(self.role_select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.invoker_id:
+            await interaction.response.send_message(
+                "This selection isn't for you.",
+                ephemeral=True
+            )
+            return
+
+        if self.completed:
+            await interaction.response.send_message(
+                "This DM broadcast has already been completed.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        role = interaction.guild.get_role(self.role_id) if interaction.guild else None
+        if not role:
+            await interaction.followup.send(
+                "Role not found. Please check the role ID configuration.",
+                ephemeral=True
+            )
+            return
+
+        members = [member for member in role.members if not member.bot]
+        success_count = 0
+        failed_count = 0
+
+        for member in members:
+            try:
+                await member.send(self.message_content)
+                success_count += 1
+            except (discord.Forbidden, discord.HTTPException):
+                failed_count += 1
+
+        self.completed = True
+        for child in self.children:
+            child.disabled = True
+
+        try:
+            await interaction.message.edit(view=self)
+        except Exception:
+            pass
+
+        await interaction.followup.send(
+            f"DM broadcast complete. Sent to **{success_count}** members. Failed: **{failed_count}**.",
+            ephemeral=True
+        )
+
 class ZeroRemorseBot(commands.Bot):
     def __init__(self):
         # Use only basic intents to avoid privileged intent requirements
@@ -220,6 +296,7 @@ class ZeroRemorseBot(commands.Bot):
         intents.guilds = True
         intents.guild_messages = True
         intents.guild_reactions = True
+        intents.members = True  # Required to access role members for DM broadcasts
         
         super().__init__(
             command_prefix=os.getenv('BOT_PREFIX', '!'),
@@ -338,6 +415,49 @@ async def setup_ui(interaction: discord.Interaction):
         print("Setup UI success interaction expired")
     except Exception as e:
         print(f"Error responding to setup UI command: {e}")
+
+@bot.tree.command(name="dm", description="Send a DM to all members with the Valom role", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
+@app_commands.describe(message="Message to send to Valom role members")
+async def dm_broadcast(interaction: discord.Interaction, message: str):
+    """Slash command to DM all members with the Valom role (restricted to X/Manager roles)"""
+    x_role_id = int(os.getenv('X_ROLE_ID'))
+    manager_role_id = int(os.getenv('MANAGER_ROLE_ID'))
+    allowed_role_ids = {x_role_id, manager_role_id}
+
+    has_permission = any(role.id in allowed_role_ids for role in interaction.user.roles)
+    if not has_permission:
+        await interaction.response.send_message(
+            "**Access Denied**\n\nOnly users with the required roles can use this command.",
+            ephemeral=True
+        )
+        return
+
+    valom_role_id = int(os.getenv('VALOM_ROLE_ID'))
+    role = interaction.guild.get_role(valom_role_id) if interaction.guild else None
+    if not role:
+        await interaction.response.send_message(
+            "Valom role not found. Please check the role ID configuration.",
+            ephemeral=True
+        )
+        return
+
+    preview = message if len(message) <= 1000 else f"{message[:1000]}..."
+    embed = discord.Embed(
+        title="DM Broadcast",
+        description="Select the role to receive this DM.",
+        color=0x2F3136
+    )
+    embed.add_field(name="Target Role", value=f"<@&{valom_role_id}>", inline=False)
+    embed.add_field(name="Message Preview", value=preview, inline=False)
+
+    view = DmRoleSelectView(
+        invoker_id=interaction.user.id,
+        message_content=message,
+        role_id=valom_role_id,
+        role_name=role.name
+    )
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 @bot.tree.command(name="reset_stats", description="Reset all wins, losses, and draws count (Admin only)", guild=discord.Object(id=int(os.getenv('GUILD_ID'))))
 async def reset_stats(interaction: discord.Interaction):
